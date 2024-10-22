@@ -9,7 +9,7 @@
 
 #![deny(missing_docs)]
 #![deny(warnings)]
-#![no_std]
+#![no_std]//移除println!宏
 #![no_main]
 #![feature(panic_info_message)]
 
