@@ -143,6 +143,7 @@ impl PhysAddr {
         self.page_offset() == 0
     }
 }
+/// 物理地址和物理页号之间的转换
 impl From<PhysAddr> for PhysPageNum {
     fn from(v: PhysAddr) -> Self {
         assert_eq!(v.page_offset(), 0);
@@ -154,7 +155,7 @@ impl From<PhysPageNum> for PhysAddr {
         Self(v.0 << PAGE_SIZE_BITS)
     }
 }
-
+/// 将一个虚拟页号（VirtPageNum）分解成三个索引值，并将这些索引值存储在一个数组中返回
 impl VirtPageNum {
     /// Get the indexes of the page table entry
     pub fn indexes(&self) -> [usize; 3] {
@@ -175,6 +176,7 @@ impl PhysAddr {
         unsafe { (self.0 as *mut T).as_mut().unwrap() }
     }
 }
+/// 在内核中应如何访问一个特定的物理页帧
 impl PhysPageNum {
     /// Get the reference of page table(array of ptes)
     pub fn get_pte_array(&self) -> &'static mut [PageTableEntry] {

@@ -34,6 +34,9 @@ lazy_static! {
         Arc::new(unsafe { UPSafeCell::new(MemorySet::new_kernel()) });
 }
 /// address space
+/// PageTable 下 挂着所有多级页表的节点所在的物理页帧，
+/// 而每个 MapArea 下则挂着对应逻辑段中的数据所在的物理页帧，
+/// 这两部分 合在一起构成了一个地址空间所需的所有物理页帧
 pub struct MemorySet {
     page_table: PageTable,
     areas: Vec<MapArea>,

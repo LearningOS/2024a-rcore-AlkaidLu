@@ -4,7 +4,7 @@ use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPag
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
-
+//页表项中的标志位 PTEFlags
 bitflags! {
     /// page table entry flags
     pub struct PTEFlags: u8 {
@@ -20,6 +20,9 @@ bitflags! {
 }
 
 #[derive(Copy, Clone)]
+//让编译器自动为 PageTableEntry 实现 Copy/Clone Trait，
+//来让这个类型以值语义赋值/传参的时候 不会发生所有权转移，
+//而是拷贝一份新的副本。
 #[repr(C)]
 /// page table entry structure
 pub struct PageTableEntry {
@@ -29,6 +32,7 @@ pub struct PageTableEntry {
 
 impl PageTableEntry {
     /// Create a new page table entry
+    /// 从一个物理页号 PhysPageNum 和一个页表项标志位 PTEFlags 生成一个页表项
     pub fn new(ppn: PhysPageNum, flags: PTEFlags) -> Self {
         PageTableEntry {
             bits: ppn.0 << 10 | flags.bits as usize,
@@ -46,6 +50,7 @@ impl PageTableEntry {
     pub fn flags(&self) -> PTEFlags {
         PTEFlags::from_bits(self.bits as u8).unwrap()
     }
+    /// 快速判断一个页表项的 V/R/W/X 标志位是否为 1
     /// The page pointered by page table entry is valid?
     pub fn is_valid(&self) -> bool {
         (self.flags() & PTEFlags::V) != PTEFlags::empty()
@@ -69,7 +74,8 @@ pub struct PageTable {
     root_ppn: PhysPageNum,
     frames: Vec<FrameTracker>,
 }
-
+/// 因此 PageTable 要保存它根节点的物理页号 root_ppn 作为页表唯一的区分标志。
+/// 此外， 向量 frames 以 FrameTracker 的形式保存了页表所有的节点（包括根节点）所在的物理页帧。
 /// Assume that it won't oom when creating/mapping.
 impl PageTable {
     /// Create a new page table
@@ -88,7 +94,9 @@ impl PageTable {
         }
     }
     /// Find PageTableEntry by VirtPageNum, create a frame for a 4KB page table if not exist
+    /// 接受一个 PageTable 实例的可变引用（&mut self）和一个 VirtPageNum 类型的虚拟页号（vpn）
     fn find_pte_create(&mut self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
+        // 将虚拟页号分解成三个索引值，存储在变量 idxs 中
         let idxs = vpn.indexes();
         let mut ppn = self.root_ppn;
         let mut result: Option<&mut PageTableEntry> = None;

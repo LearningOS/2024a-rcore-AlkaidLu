@@ -1,9 +1,8 @@
 //! Process management syscalls
 use crate::{
-    config::MAX_SYSCALL_NUM,
-    task::{
+    config::MAX_SYSCALL_NUM, mm::VirtAddr, task::{
         change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus,
-    },
+    }
 };
 
 #[repr(C)]
@@ -43,6 +42,11 @@ pub fn sys_yield() -> isize {
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
+    let virt_addr=VirtAddr(_ts as usize);
+    if let Some(phy_addr) = virt2phys_addr(virt_addr){
+        
+    }
+
     -1
 }
 

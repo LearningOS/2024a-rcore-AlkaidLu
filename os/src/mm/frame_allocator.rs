@@ -9,11 +9,12 @@ use core::fmt::{self, Debug, Formatter};
 use lazy_static::*;
 
 /// tracker for physical page frame allocation and deallocation
+/// 物理页号 PhysPageNum 包装为一个 FrameTracker
 pub struct FrameTracker {
     /// physical page number
     pub ppn: PhysPageNum,
 }
-
+/// FrameTracker 被创建时，需要从 FRAME_ALLOCATOR 中分配一个物理页帧
 impl FrameTracker {
     /// Create a new FrameTracker
     pub fn new(ppn: PhysPageNum) -> Self {
@@ -37,13 +38,16 @@ impl Drop for FrameTracker {
         frame_dealloc(self.ppn);
     }
 }
-
+///描述一个物理页帧管理器需要提供哪些功能
 trait FrameAllocator {
     fn new() -> Self;
     fn alloc(&mut self) -> Option<PhysPageNum>;
     fn dealloc(&mut self, ppn: PhysPageNum);
 }
 /// an implementation for frame allocator
+/// 实现一种最简单的栈式物理页帧管理策略
+/// 物理页号区间此前均从未被分配出去过，而向量recycled 
+///以后入先出的方式保存了被回收的物理页号
 pub struct StackFrameAllocator {
     current: usize,
     end: usize,
@@ -104,6 +108,7 @@ pub fn init_frame_allocator() {
     );
 }
 
+/// 公开给其他子模块调用的分配/回收物理页帧的接口
 /// Allocate a physical page frame in FrameTracker style
 pub fn frame_alloc() -> Option<FrameTracker> {
     FRAME_ALLOCATOR
