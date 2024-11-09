@@ -1,10 +1,10 @@
 //! Implementation of [`PageTableEntry`] and [`PageTable`].
 
-use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
+use super::{frame_alloc, PhysAddr, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPageNum};
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
-use crate::mm::page_table::_core::mem;
+//use crate::mm::page_table::_core::mem;
 
 //页表项中的标志位 PTEFlags
 bitflags! {
@@ -193,6 +193,16 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
 /// Translate&Copy a *mut T to a mutable T through page table
 pub fn translated_struct_ptr<T>(token: usize, ptr: *mut T) -> &'static mut T {
     let page_table = PageTable::from_token(token);
+    let va = VirtAddr::from(ptr as usize);
+    let page_off = va.page_offset();
+    let vpn = va.floor();
+    let mut pa: PhysAddr = page_table.translate(vpn).unwrap().ppn().into();
+    pa.0 += page_off;
+    pa.get_mut()
+}
+/*
+pub fn translated_struct_ptr<T>(token: usize, ptr: *mut T) -> &'static mut T {
+    let page_table = PageTable::from_token(token);
     let mut start = ptr as usize;
     let end = start + mem::size_of::<T>();
     let mut v = Vec::new();
@@ -213,3 +223,5 @@ pub fn translated_struct_ptr<T>(token: usize, ptr: *mut T) -> &'static mut T {
     unsafe { &mut *(v.as_mut_ptr() as *mut T) }
     
 }
+*/
+
