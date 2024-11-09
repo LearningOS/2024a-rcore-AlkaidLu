@@ -4,17 +4,27 @@ use super::{frame_alloc, FrameTracker, PhysPageNum, StepByOne, VirtAddr, VirtPag
 use alloc::vec;
 use alloc::vec::Vec;
 use bitflags::*;
+use crate::mm::page_table::_core::mem;
+
 //页表项中的标志位 PTEFlags
 bitflags! {
     /// page table entry flags
     pub struct PTEFlags: u8 {
+        /// Valid (page is present).
         const V = 1 << 0;
+        /// Readable.
         const R = 1 << 1;
+        /// Writable.
         const W = 1 << 2;
+        /// Executable.
         const X = 1 << 3;
+        /// User-accessible.
         const U = 1 << 4;
+        /// Global mapping.
         const G = 1 << 5;
+        /// Accessed (page has been accessed).
         const A = 1 << 6;
+        /// Dirty (page has been written to).
         const D = 1 << 7;
     }
 }
@@ -178,4 +188,28 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         start = end_va.into();
     }
     v
+}
+
+/// Translate&Copy a *mut T to a mutable T through page table
+pub fn translated_struct_ptr<T>(token: usize, ptr: *mut T) -> &'static mut T {
+    let page_table = PageTable::from_token(token);
+    let mut start = ptr as usize;
+    let end = start + mem::size_of::<T>();
+    let mut v = Vec::new();
+    while start < end {
+        let start_va = VirtAddr::from(start);
+        let mut vpn = start_va.floor();
+        let ppn = page_table.translate(vpn).unwrap().ppn();
+        vpn.step();
+        let mut end_va: VirtAddr = vpn.into();
+        end_va = end_va.min(VirtAddr::from(end));
+        if end_va.page_offset() == 0 {
+            v.push(&mut ppn.get_bytes_array()[start_va.page_offset()..]);
+        } else {
+            v.push(&mut ppn.get_bytes_array()[start_va.page_offset()..end_va.page_offset()]);
+        }
+        start = end_va.into();
+    }
+    unsafe { &mut *(v.as_mut_ptr() as *mut T) }
+    
 }

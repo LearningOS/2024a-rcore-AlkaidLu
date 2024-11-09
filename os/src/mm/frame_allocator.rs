@@ -14,7 +14,7 @@ pub struct FrameTracker {
     /// physical page number
     pub ppn: PhysPageNum,
 }
-/// FrameTracker 被创建时，需要从 FRAME_ALLOCATOR 中分配一个物理页帧
+///
 impl FrameTracker {
     /// Create a new FrameTracker
     pub fn new(ppn: PhysPageNum) -> Self {

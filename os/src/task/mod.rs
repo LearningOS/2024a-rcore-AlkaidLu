@@ -23,7 +23,7 @@ use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
-
+use crate::config::MAX_SYSCALL_NUM;
 /// The task manager, where all the tasks are managed.
 ///
 /// Functions implemented on `TaskManager` deals with all task state transitions
@@ -153,6 +153,30 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    ///
+    fn increase_sys_call(&self, sys_id:usize){
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].sys_call_times[sys_id]+=1;
+    }
+    ///
+    fn get_sys_call_times(&self)->[u32;MAX_SYSCALL_NUM]{
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].sys_call_times.clone()
+    }
+    ///
+    fn get_mmap(&self, start: usize, len: usize, port: usize)->isize{
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].mmap(start, len, port)
+    }
+    ///
+    fn get_munmap(&self,start: usize, len: usize)->isize{
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].munmap(start, len)
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +225,22 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Increases the syscall counter for the specified syscall ID.
+pub fn increase_sys_call(sys_id:usize) {
+    TASK_MANAGER.increase_sys_call(sys_id);
+}
+/// Populates the `TaskInfo` structure with the current task's information.
+pub fn get_sys_call_times()-> [u32; MAX_SYSCALL_NUM] {
+    TASK_MANAGER.get_sys_call_times()
+}
+
+/// Increases the syscall counter for the specified syscall ID.
+pub fn get_mmap( _start: usize, _len: usize, _port: usize)->isize {
+    TASK_MANAGER.get_mmap( _start, _len, _port)
+}
+/// Populates the `TaskInfo` structure with the current task's information.
+pub fn get_munmap( _start: usize, _len: usize)->isize {
+    TASK_MANAGER.get_munmap( _start, _len)
 }

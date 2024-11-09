@@ -66,6 +66,24 @@ impl MemorySet {
             None,
         );
     }
+    ///
+    pub fn delete_framed_area(&mut self, va_start: VirtPageNum, va_end: VirtPageNum) -> isize {
+        let mut va_start=va_start;
+        while va_start != va_end {
+            // println!("unmap va_start = {}", va_start.0);
+            if let Some(item) = self.page_table.translate(va_start) {
+                if !item.is_valid() {
+                    debug!("unmap on no map vpn");
+                    return -1;
+                }
+            } else {
+                return -1;
+            }
+            self.page_table.unmap(va_start);
+            va_start.step();
+        }
+        0
+    }
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
@@ -265,6 +283,7 @@ impl MemorySet {
             false
         }
     }
+
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
