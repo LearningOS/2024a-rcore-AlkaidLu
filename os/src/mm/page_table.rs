@@ -8,13 +8,21 @@ use bitflags::*;
 bitflags! {
     /// page table entry flags
     pub struct PTEFlags: u8 {
+        /// Valid (page is present).
         const V = 1 << 0;
+        /// Readable.
         const R = 1 << 1;
+        /// Writable.
         const W = 1 << 2;
+        /// Executable.
         const X = 1 << 3;
+        /// User-accessible.
         const U = 1 << 4;
+        /// Global mapping.
         const G = 1 << 5;
+        /// Accessed (page has been accessed).
         const A = 1 << 6;
+        /// Dirty (page has been written to).
         const D = 1 << 7;
     }
 }
@@ -181,6 +189,17 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         start = end_va.into();
     }
     v
+}
+
+/// Translate&Copy a *mut T to a mutable T through page table
+pub fn translated_struct_ptr<T>(token: usize, ptr: *mut T) -> &'static mut T {
+    let page_table = PageTable::from_token(token);
+    let va = VirtAddr::from(ptr as usize);
+    let page_off = va.page_offset();
+    let vpn = va.floor();
+    let mut pa: PhysAddr = page_table.translate(vpn).unwrap().ppn().into();
+    pa.0 += page_off;
+    pa.get_mut()
 }
 
 /// Translate&Copy a ptr[u8] array end with `\0` to a `String` Vec through page table

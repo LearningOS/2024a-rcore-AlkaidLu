@@ -1,14 +1,14 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
-use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::config::{TRAP_CONTEXT_BASE,MAX_SYSCALL_NUM};
+use crate::mm::{ MapPermission, MemorySet, PhysPageNum, VirtAddr, VirtPageNum, KERNEL_SPACE, PTEFlags,};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefMut;
-
+use crate::config::BIG_STRIDE;
 /// Task control block structure
 ///
 /// Directly save the contents that will not change during running
@@ -68,6 +68,18 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// syscall time count
+    pub sys_call_times: [u32; MAX_SYSCALL_NUM],
+
+    /// begen time
+    pub sys_call_begin: usize,
+
+    ///priority level
+    pub prio:usize,
+
+    ///stride
+    pub stride:usize,
 }
 
 impl TaskControlBlockInner {
@@ -84,6 +96,74 @@ impl TaskControlBlockInner {
     }
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
+    }
+    /// mmap
+    #[allow(unused)]
+    pub fn mmap(&mut self, start: usize, len: usize, port: usize)->isize{
+        let va_start:VirtAddr=start.into();
+        if !va_start.aligned(){
+            debug!("mmap fail to be aligned!");
+            return -1;
+        }
+        let mut flags=PTEFlags::from_bits(port as u8).unwrap();
+        // check valid
+        let start_vpn = VirtPageNum::from(VirtAddr(start));
+        let end_vpn = VirtPageNum::from(VirtAddr(start + len).ceil());
+        for vpn in start_vpn.0 .. end_vpn.0 {
+            if let Some(pte) = self.memory_set.translate(VirtPageNum(vpn)) {
+                if pte.is_valid() {
+                    println!("vpn {} has been occupied!", vpn);
+                    return -1;
+                }
+            }
+        }
+	// PTE_U 的语义是【用户能否访问该物理帧】
+        let permission = MapPermission::from_bits((port as u8) << 1).unwrap() | MapPermission::U;
+        self.memory_set.insert_framed_area(VirtAddr(start), VirtAddr(start+len), permission);
+        0
+    }
+    /// munmap
+    #[allow(unused)]
+    pub fn munmap(&mut self, start: usize, len: usize)->isize{
+        let va_start:VirtAddr=start.into();
+        if !va_start.aligned(){
+            debug!("mmap fail to be aligned!");
+            return -1;
+        }
+        
+        // check valid
+        let start_vpn = VirtPageNum::from(VirtAddr(start));
+        let end_vpn = VirtPageNum::from(VirtAddr(start + len).ceil());
+        for vpn in start_vpn.0 .. end_vpn.0 {
+            if let Some(pte) = self.memory_set.translate(VirtPageNum(vpn)) {
+                if !pte.is_valid() {
+                    println!("vpn {} is not valid before unmap!", vpn);
+                    return -1;
+                }
+            }
+        }
+        self.memory_set.delete_framed_area (start_vpn, end_vpn);
+        0
+    }
+    ///
+    pub fn increase_sys_call(& mut self, sys_id:usize){
+        self.sys_call_times[sys_id]+=1;
+    }
+    ///
+    pub fn get_sys_call_times(&self)->[u32;MAX_SYSCALL_NUM]{
+        self.sys_call_times.clone()
+    }
+    ///
+    pub fn get_task_start_time(&self) -> usize {
+        self.sys_call_begin
+    }
+    ///
+    pub fn get_mmap(&mut self, start: usize, len: usize, port: usize)->isize{
+        self.mmap(start, len, port)
+    }
+    ///
+    pub fn get_munmap(&mut self,start: usize, len: usize)->isize{
+        self.munmap(start, len)
     }
 }
 
@@ -118,6 +198,10 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    sys_call_times:[0; MAX_SYSCALL_NUM],
+                    sys_call_begin:0,
+                    prio:16,
+                    stride:0,
                 })
             },
         };
@@ -131,6 +215,12 @@ impl TaskControlBlock {
             trap_handler as usize,
         );
         task_control_block
+    }
+
+    /// update_stride
+    pub fn update_stride(&self) {
+        let mut var = self.inner_exclusive_access();
+        var.stride += BIG_STRIDE / var.prio;
     }
 
     /// Load a new elf to replace the original application address space and start execution
@@ -191,6 +281,10 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    sys_call_times: parent_inner.sys_call_times.clone(),
+                    sys_call_begin:0,
+                    prio:parent_inner.prio,
+                    stride:parent_inner.stride
                 })
             },
         });
@@ -236,6 +330,27 @@ impl TaskControlBlock {
             None
         }
     }
+
+    /// Increases the syscall counter for the specified syscall ID.
+    pub fn increase_sys_call(&self,sys_id:usize) {
+        let mut inner = self.inner_exclusive_access();
+        inner.increase_sys_call(sys_id);
+    }
+    /// Populates the `TaskInfo` structure with the current task's information.
+    pub fn get_sys_call_times(&self)-> [u32; MAX_SYSCALL_NUM] {
+        let inner = self.inner_exclusive_access();
+        inner.get_sys_call_times()
+    }
+    /// Increases the syscall counter for the specified syscall ID.
+    pub fn get_mmap( &self,_start: usize, _len: usize, _port: usize)->isize {
+        let mut inner = self.inner_exclusive_access();
+        inner.get_mmap( _start, _len, _port)
+    }
+    /// Populates the `TaskInfo` structure with the current task's information.
+    pub fn get_munmap( &self,_start: usize, _len: usize)->isize {
+        let mut inner = self.inner_exclusive_access();
+        inner.get_munmap( _start, _len)
+}
 }
 
 #[derive(Copy, Clone, PartialEq)]
