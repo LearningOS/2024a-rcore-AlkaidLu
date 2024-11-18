@@ -189,22 +189,32 @@ pub fn sys_spawn(_path: *const u8) -> isize {
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    let current_task = current_task().unwrap();
+
+    let current_task = current_task();
+    if current_task.is_none() {
+        return -1;
+    }
+
+    let current_task = current_task.unwrap();
     let mut current_inner = current_task.inner_exclusive_access();
 
     let token = current_inner.memory_set.token();
     let path = translated_str(token, _path);
     if let Some(data) = get_app_data_by_name(path.as_str()) {
         let child_block = Arc::new(TaskControlBlock::new(data));
-        let mut child_inner = child_block.inner_exclusive_access();
-        child_inner.parent = Some(Arc::downgrade(&current_task));
+        {
+            let mut child_inner = child_block.inner_exclusive_access();
+            child_inner.parent = Some(Arc::downgrade(&current_task));
+        }
         current_inner.children.push(child_block.clone());
+        //println!("OK8");
         add_task(child_block.clone());
+        //println!("OK9");
         return child_block.pid.0 as isize;
 
-    } else {
-        -1
-    }
+    } 
+    -1
+    
 }
 
 // YOUR JOB: Set task priority.

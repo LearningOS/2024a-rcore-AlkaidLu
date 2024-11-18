@@ -20,9 +20,13 @@ impl TaskManager {
     }
     /// Add process back to ready queue
     pub fn add(&mut self, task: Arc<TaskControlBlock>) {
+        //println!("add OK");
+        //println!("add OK, task ref count: {}", Arc::strong_count(&task));
         let inner = task.inner_exclusive_access();
+        //println!("add OK1");
         let stride0=inner.stride;
         drop(inner);
+        //println!("add OK2");
         let len = self.ready_queue.len();
         for idx in 0..len {
             let queue_task = self.ready_queue.get_mut(idx).unwrap();
@@ -50,7 +54,7 @@ lazy_static! {
 
 /// Add process to ready queue
 pub fn add_task(task: Arc<TaskControlBlock>) {
-    //trace!("kernel: TaskManager::add_task");
+    trace!("kernel: TaskManager::add_task");
     TASK_MANAGER.exclusive_access().add(task);
 }
 
