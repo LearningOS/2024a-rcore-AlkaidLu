@@ -4,6 +4,7 @@ use crate::sync::UPSafeCell;
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
 use lazy_static::*;
+
 ///A array of `TaskControlBlock` that is thread-safe
 pub struct TaskManager {
     ready_queue: VecDeque<Arc<TaskControlBlock>>,
@@ -19,6 +20,24 @@ impl TaskManager {
     }
     /// Add process back to ready queue
     pub fn add(&mut self, task: Arc<TaskControlBlock>) {
+        //println!("add OK");
+        //println!("add OK, task ref count: {}", Arc::strong_count(&task));
+        let inner = task.inner_exclusive_access();
+        //println!("add OK1");
+        let stride0=inner.stride;
+        drop(inner);
+        //println!("add OK2");
+        let len = self.ready_queue.len();
+        for idx in 0..len {
+            let queue_task = self.ready_queue.get_mut(idx).unwrap();
+            let stride1 = queue_task.inner_exclusive_access().stride;
+            // keep the queue head owns the smallest pass
+            if stride0 < stride1 {
+                // println!("new task priority: {}, pass: {}, inserted before idx {}", prio, pass, idx);
+                self.ready_queue.insert(idx, task);
+                return
+            }
+        }
         self.ready_queue.push_back(task);
     }
     /// Take a process out of the ready queue
@@ -35,7 +54,7 @@ lazy_static! {
 
 /// Add process to ready queue
 pub fn add_task(task: Arc<TaskControlBlock>) {
-    //trace!("kernel: TaskManager::add_task");
+    trace!("kernel: TaskManager::add_task");
     TASK_MANAGER.exclusive_access().add(task);
 }
 
