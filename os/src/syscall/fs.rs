@@ -1,6 +1,6 @@
 //! File and filesystem-related syscalls
 use crate::fs::{open_file, OpenFlags, Stat};
-use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
+use crate::mm::{translated_byte_buffer, translated_refmut, translated_str, UserBuffer};
 use crate::task::{current_task, current_user_token};
 
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
@@ -81,6 +81,21 @@ pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
         "kernel:pid[{}] sys_fstat NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
+    let st=translated_refmut(current_user_token(),_st);         
+    let current_task = current_task().unwrap();
+    let inner = current_task.inner_exclusive_access();
+    
+    if _fd>inner.fd_table.len(){
+        return -1;
+    }
+    if let Some(file) = &inner.fd_table[_fd]{
+        if !file.readable() {
+            return -1;
+        }
+        let file = file.clone();
+        drop(inner);
+        return file.fstat(st);
+    }
     -1
 }
 

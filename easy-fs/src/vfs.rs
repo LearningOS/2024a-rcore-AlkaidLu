@@ -2,6 +2,7 @@ use super::{
     block_cache_sync_all, get_block_cache, BlockDevice, DirEntry, DiskInode, DiskInodeType,
     EasyFileSystem, DIRENT_SZ,
 };
+use crate::BLOCK_SZ;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -183,4 +184,37 @@ impl Inode {
         });
         block_cache_sync_all();
     }
+    /// inode 文件所在 inode 编号
+    pub fn fstat_get_id(&self)->u64{
+        let block_begin = self.fs.lock().inode_area_start_block as usize;
+        let inode_size = core::mem::size_of::<DiskInode>();
+        let inodes_per_block = BLOCK_SZ / inode_size;
+        let r = (self.block_id - block_begin) * inodes_per_block + self.block_offset / inode_size;
+        r as u64
+    }
+    
+    
+    /// 文件类型
+    pub fn fstat_mode(&self)->u32{
+        // directory
+        let mut _fs = self.fs.lock();
+        if self.read_disk_inode(|node| node.is_dir()){
+            return 2;
+        }
+        // ordinary regular file
+        else if self.read_disk_inode(|node| node.is_file()){
+            return 1;
+        }
+        // null
+        else {
+            return 0;
+        }
+    }
+    /// 硬链接数量，初始为1
+    pub fn fstat_nlink(&self)->u32{
+        let mut _fs = self.fs.lock();
+        self.read_disk_inode(|node| node.reference_count)
+    }
+
+
 }

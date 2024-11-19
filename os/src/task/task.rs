@@ -3,7 +3,7 @@ use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 use crate::config::TRAP_CONTEXT_BASE;
 use crate::fs::{File, Stdin, Stdout};
-use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
+use crate::mm::{ MapPermission, MemorySet, PhysPageNum, VirtAddr, VirtPageNum, KERNEL_SPACE, PTEFlags, };
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
@@ -11,6 +11,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::cell::RefMut;
 use crate::config::BIG_STRIDE;
+use crate::task::MAX_SYSCALL_NUM;
 /// Task control block structure
 ///
 /// Directly save the contents that will not change during running

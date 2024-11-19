@@ -4,7 +4,7 @@
 //!
 //! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
 //! need to wrap `OSInodeInner` into `UPSafeCell`
-use super::File;
+use super::{File,Stat};
 use crate::drivers::BLOCK_DEVICE;
 use crate::mm::UserBuffer;
 use crate::sync::UPSafeCell;
@@ -13,7 +13,7 @@ use alloc::vec::Vec;
 use bitflags::*;
 use easy_fs::{EasyFileSystem, Inode};
 use lazy_static::*;
-
+use crate::fs::StatMode;
 /// inode in memory
 /// A wrapper around a filesystem inode
 /// to implement File trait atop
@@ -154,5 +154,19 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+    fn fstat(&self, stat:&mut Stat)-> isize{
+        let inner = self.inner.exclusive_access();
+        stat.dev=0;
+        stat.ino=inner.inode.fstat_get_id();
+        match inner.inode.fstat_mode(){
+            1 => stat.mode = StatMode::FILE,
+            2 => stat.mode = StatMode::DIR,
+            0 => stat.mode = StatMode::NULL,
+            _ => stat.mode = StatMode::NULL,
+        }
+        stat.nlink=inner.inode.fstat_nlink();
+
+        0
     }
 }

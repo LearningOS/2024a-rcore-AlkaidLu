@@ -31,7 +31,7 @@ use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
 use crate::config::MAX_SYSCALL_NUM;
-pub use context::TaskContext;
+//pub use context::TaskContext;
 pub use id::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 pub use manager::add_task;
 pub use processor::{

@@ -189,17 +189,6 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     v
 }
 
-/// Translate&Copy a *mut T to a mutable T through page table
-pub fn translated_struct_ptr<T>(token: usize, ptr: *mut T) -> &'static mut T {
-    let page_table = PageTable::from_token(token);
-    let va = VirtAddr::from(ptr as usize);
-    let page_off = va.page_offset();
-    let vpn = va.floor();
-    let mut pa: PhysAddr = page_table.translate(vpn).unwrap().ppn().into();
-    pa.0 += page_off;
-    pa.get_mut()
-}
-
 /// Translate&Copy a ptr[u8] array end with `\0` to a `String` Vec through page table
 pub fn translated_str(token: usize, ptr: *const u8) -> String {
     let page_table = PageTable::from_token(token);
