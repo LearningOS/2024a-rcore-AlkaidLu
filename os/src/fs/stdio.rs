@@ -43,6 +43,7 @@ impl File for Stdin {
     fn fstat(&self, stat:&mut Stat)-> isize{
         -1
     }
+
 }
 
 impl File for Stdout {
@@ -65,4 +66,5 @@ impl File for Stdout {
     fn fstat(&self, stat:&mut Stat)-> isize{
         -1
     }
+
 }

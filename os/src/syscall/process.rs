@@ -5,10 +5,9 @@ use alloc::sync::Arc;
 use crate::{
     config::MAX_SYSCALL_NUM,
     fs::{open_file, OpenFlags},
-    mm::{ translated_struct_ptr,translated_refmut,translated_str},
+    mm::{translated_refmut, translated_str},
     task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        get_sys_call_times, suspend_current_and_run_next, TaskStatus, TaskControlBlock
+        add_task, current_task, current_user_token, exit_current_and_run_next, get_sys_call_times, suspend_current_and_run_next, TaskControlBlock, TaskStatus
     },timer::get_time_us
 };
 
@@ -123,7 +122,7 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         current_task().unwrap().pid.0
     );
     let us = get_time_us();
-    let ts=translated_struct_ptr(current_user_token(),_ts);
+    let ts=translated_refmut(current_user_token(),_ts);
     *ts = TimeVal {
         sec: us / 1_000_000,
         usec: us % 1_000_000,
@@ -139,7 +138,7 @@ pub fn sys_task_info(_ti: *mut TaskInfo) -> isize {
         "kernel:pid[{}] sys_task_info NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    let ti=translated_struct_ptr(current_user_token(),_ti);         
+    let ti=translated_refmut(current_user_token(),_ti);         
     *ti = TaskInfo {
         status: TaskStatus::Running,
         syscall_times: get_sys_call_times(),
@@ -200,14 +199,20 @@ pub fn sys_spawn(_path: *const u8) -> isize {
 
     let token = current_inner.memory_set.token();
     let path = translated_str(token, _path);
+    //println!("{}",path);
     if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
         let all_data = app_inode.read_all();
         let data = &all_data.as_slice();
+        //println!("{:?}",data);
+        //println!("OK");
         let child_block = Arc::new(TaskControlBlock::new(data));
         {
+            //println!("OK1");
             let mut child_inner = child_block.inner_exclusive_access();
+            //println!("OK2");
             child_inner.parent = Some(Arc::downgrade(&current_task));
         }
+        //println!("OK3");
         current_inner.children.push(child_block.clone());
         add_task(child_block.clone());
         return child_block.pid.0 as isize;

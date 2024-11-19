@@ -189,11 +189,9 @@ impl Inode {
         let block_begin = self.fs.lock().inode_area_start_block as usize;
         let inode_size = core::mem::size_of::<DiskInode>();
         let inodes_per_block = BLOCK_SZ / inode_size;
-        let r = (self.block_id - block_begin) * inodes_per_block + self.block_offset / inode_size;
-        r as u64
+        let inode = (self.block_id - block_begin) * inodes_per_block + self.block_offset / inode_size;
+        inode as u64
     }
-    
-    
     /// 文件类型
     pub fn fstat_mode(&self)->u32{
         // directory
@@ -215,6 +213,129 @@ impl Inode {
         let mut _fs = self.fs.lock();
         self.read_disk_inode(|node| node.reference_count)
     }
+    ///
+    pub fn add_link(&self,_old_name: &str, _new_name: &str) -> isize {
+        let mut fs = self.fs.lock();
+        let old_inode_id = self.read_disk_inode(|disk_inode|
+            self.find_inode_id(_old_name, disk_inode)
+        );
+         // old_name should point to a valid file
+        if old_inode_id.is_none() {
+            return -1;
+        }
+        let old_inode_id = old_inode_id.unwrap();
+        // new_name should not point to an existing file
+        if self.read_disk_inode(|disk_inode| self.find_inode_id(_new_name, disk_inode)).is_some() {
+            return -1;
+        }
+        self.modify_disk_inode(|root_inode| {
+            // append file in the dirent
+            let file_count = (root_inode.size as usize) / DIRENT_SZ;
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            // increase size
+            self.increase_size(new_size as u32, root_inode, &mut fs);
+            // write dirent
+            let dirent = DirEntry::new(_new_name, old_inode_id);
+            root_inode.write_at(
+                file_count * DIRENT_SZ,
+                dirent.as_bytes(),
+                &self.block_device,
+            );
+        });
 
+        let (block_id, block_offset) = fs.get_disk_inode_pos(old_inode_id);
+        //提供对 inode 的线程安全、引用计数的共享访问。
+        let node =Arc::new(Self::new(
+            block_id,
+            block_offset,
+            self.fs.clone(),
+            self.block_device.clone(),
+        ));
+        node.modify_disk_inode(|disk_inode| {
+            // 增加引用计数
+            disk_inode.increase_reference_count();
+        });
+        block_cache_sync_all();
+        0
 
+        // release efs lock automatically by compiler
+    }
+    ///
+    pub fn remove_link(&self, name: &str) -> isize {
+        let mut fs = self.fs.lock();
+        // 查找目录项
+        let inode = self.modify_disk_inode(|disk_inode| {
+            if !disk_inode.is_dir() {
+                // 非目录文件，直接返回错误
+                return None;
+            }
+            let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+            let mut target_inode = None;
+            let mut dirent = DirEntry::empty();
+    
+            for i in 0..file_count {
+                // 读取目录项
+                assert_eq!(
+                    disk_inode.read_at(DIRENT_SZ * i, dirent.as_bytes_mut(), &self.block_device),
+                    DIRENT_SZ,
+                );
+                if dirent.name() == name {
+                    // 找到目标目录项，保存其 inode 编号
+                    target_inode = Some(dirent.inode_id());
+    
+                    if i == file_count - 1 {
+                        // 如果是最后一项，直接清空并减小目录大小
+                        disk_inode.write_at(DIRENT_SZ * i, &[0u8; DIRENT_SZ], &self.block_device);
+                    } else {
+                        // 覆盖当前项为最后一项，并清空最后一项
+                        let mut last_dirent = DirEntry::empty();
+                        disk_inode.read_at(
+                            DIRENT_SZ * (file_count - 1),
+                            last_dirent.as_bytes_mut(),
+                            &self.block_device,
+                        );
+                        disk_inode.write_at(DIRENT_SZ * i, last_dirent.as_bytes(), &self.block_device);
+                        disk_inode.write_at(DIRENT_SZ * (file_count - 1), &[0u8; DIRENT_SZ], &self.block_device);
+                    }
+                    disk_inode.size -= DIRENT_SZ as u32;
+                    break;
+                }
+            }
+            target_inode
+        });
+    
+        // 如果目录项不存在，返回错误
+        if inode.is_none() {
+            return -1;
+        }
+        let inode = inode.unwrap();
+    
+        // 获取要删除文件的 inode 并减少引用计数
+        let (block_id, block_offset) = fs.get_disk_inode_pos(inode);
+        let node = Arc::new(Self::new(
+            block_id,
+            block_offset,
+            self.fs.clone(),
+            self.block_device.clone(),
+        ));
+    
+        node.modify_disk_inode(|disk_inode| {
+            // 减少引用计数
+            disk_inode.decrease_reference_count();
+            if disk_inode.can_remove() {
+                // 如果引用计数为 0，清理文件
+                let size = disk_inode.size;
+                let data_blocks_dealloc = disk_inode.clear_size(&self.block_device);
+                assert!(data_blocks_dealloc.len() == DiskInode::total_blocks(size) as usize);
+                for data_block in data_blocks_dealloc {
+                    fs.dealloc_data(data_block);
+                }
+            }
+        });
+    
+        // 同步缓存
+        block_cache_sync_all();
+        0
+    }
+    
 }

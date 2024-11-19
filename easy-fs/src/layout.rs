@@ -100,7 +100,18 @@ impl DiskInode {
         self.indirect2 = 0;
         self.type_ = type_;
     }
-
+    ///
+    pub fn decrease_reference_count(&mut self) {
+        self.reference_count -= 1;
+    }
+    ///
+    pub fn increase_reference_count(&mut self) {
+        self.reference_count += 1;
+    }
+    ///
+    pub fn can_remove(&self) -> bool {
+        self.reference_count == 0
+    }
     /// Whether this inode is a directory
     pub fn is_dir(&self) -> bool {
         self.type_ == DiskInodeType::Directory
