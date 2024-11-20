@@ -6,8 +6,9 @@ use crate::{
     config::MAX_SYSCALL_NUM,
     fs::{open_file, OpenFlags},
     mm::{translated_refmut, translated_str},
+    //, MemorySet
     task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next, get_sys_call_times, suspend_current_and_run_next, TaskControlBlock, TaskStatus
+        add_task, current_task, current_user_token, exit_current_and_run_next, get_sys_call_times, suspend_current_and_run_next,  TaskStatus
     },timer::get_time_us
 };
 
@@ -183,43 +184,31 @@ pub fn sys_sbrk(size: i32) -> isize {
 
 /// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
-pub fn sys_spawn(_path: *const u8) -> isize {
+pub fn sys_spawn(path: *const u8) -> isize {
     trace!(
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-
-    let current_task = current_task();
-    if current_task.is_none() {
-        return -1;
-    }
-
-    let current_task = current_task.unwrap();
-    let mut current_inner = current_task.inner_exclusive_access();
-
-    let token = current_inner.memory_set.token();
-    let path = translated_str(token, _path);
-    //println!("{}",path);
+    let token = current_user_token();
+    let path = translated_str(token, path);
     if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
         let all_data = app_inode.read_all();
-        let data = &all_data.as_slice();
-        //println!("{:?}",data);
-        //println!("OK");
-        let child_block = Arc::new(TaskControlBlock::new(data));
-        {
-            //println!("OK1");
-            let mut child_inner = child_block.inner_exclusive_access();
-            //println!("OK2");
-            child_inner.parent = Some(Arc::downgrade(&current_task));
-        }
-        //println!("OK3");
-        current_inner.children.push(child_block.clone());
-        add_task(child_block.clone());
-        return child_block.pid.0 as isize;
+        let data=all_data.as_slice();
 
-    } 
-
-    -1
+        let current_task = current_task().unwrap();
+        let new_task = current_task.spawn(data);
+        let new_pid = new_task.pid.0;
+        // modify trap context of new_task, because it returns immediately after switching
+        let trap_cx = new_task.inner_exclusive_access().get_trap_cx();
+        // we do not have to move to next instruction since we have done it before
+        // for child process, fork returns 0
+        trap_cx.x[10] = 0;
+        // add new task to scheduler
+        add_task(new_task);
+        new_pid as isize
+    } else {
+        -1
+    }
     
 }
 
