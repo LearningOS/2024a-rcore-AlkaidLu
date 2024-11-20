@@ -1,3 +1,9 @@
+# 代码功能
+
+
+
+# 问答题
+
 #### **问题 1：轮到 `p1` 执行吗？**
 
 * `p1.stride = 255`，`p2.stride = 250`，初始 `pass = 10`。
@@ -47,7 +53,7 @@ impl PartialOrd for Stride {
 
         // 计算差值，处理溢出
         let diff = self.0.wrapping_sub(other.0);
-      
+  
         if diff <= half_stride {
             Some(Ordering::Less) // self < other
         } else {
@@ -63,6 +69,8 @@ impl PartialEq for Stride {
 }
 
 ```
+
+
 
 # **荣誉准则**
 

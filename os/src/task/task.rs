@@ -6,7 +6,8 @@ use crate::trap::TrapContext;
 use crate::{mm::PhysPageNum, sync::UPSafeCell};
 use alloc::sync::{Arc, Weak};
 use core::cell::RefMut;
-
+use alloc::vec::Vec;
+use alloc::vec;
 /// Task control block structure
 pub struct TaskControlBlock {
     /// immutable
@@ -41,6 +42,14 @@ pub struct TaskControlBlockInner {
     pub task_status: TaskStatus,
     /// It is set when active exit or execution error occurs
     pub exit_code: Option<i32>,
+    ///
+    pub  mutex_allocation:Vec<usize>, 
+    /// 
+    pub semaphore_allocation:Vec<usize>,
+    /// 
+    pub mutex_need:Vec<usize>,
+    /// 
+    pub semaphore_need:Vec<usize>,
 }
 
 impl TaskControlBlockInner {
@@ -52,6 +61,68 @@ impl TaskControlBlockInner {
     fn get_status(&self) -> TaskStatus {
         self.task_status
     }
+    /// 
+    pub fn adjust_mutex_allocation(&mut self, target_id: usize, num: usize, ifadd:bool) {
+        if self.mutex_allocation.len() <= target_id {
+            // 如果长度不足，追加0直到 target_id 的索引
+            self.mutex_allocation.resize(target_id + 1, 0);
+        }
+        // 增加目标索引的值
+        if ifadd{
+            self.mutex_allocation[target_id] += num;
+        }
+        else {
+            {
+                self.mutex_allocation[target_id] -= num;
+            }
+        }
+        
+    }
+    /// 
+    pub fn adjust_sema_allocation(&mut self, target_id: usize, num: usize, ifadd:bool) {
+        if self.semaphore_allocation.len() <= target_id {
+            // 如果长度不足，追加0直到 target_id 的索引
+            self.semaphore_allocation.resize(target_id + 1, 0);
+        }
+        // 增加目标索引的值
+        if ifadd{
+        self.semaphore_allocation[target_id] += num;
+        }
+        else {
+            self.semaphore_allocation[target_id] -= num;
+        }
+    }
+    /// 
+    pub fn adjust_mutex_need(&mut self, target_id: usize, num: usize, ifadd:bool) {
+        if self.mutex_need.len() <= target_id {
+            // 如果长度不足，追加0直到 target_id 的索引
+            self.mutex_need.resize(target_id + 1, 0);
+        }
+        // 增加目标索引的值
+        if ifadd{
+            self.mutex_need[target_id] += num;
+        }
+        else {
+            self.mutex_need[target_id] -= num;
+        }
+        
+    }
+    /// 
+    pub fn adjust_sema_need(&mut self, target_id: usize, num: usize, ifadd:bool) {
+        if self.semaphore_need.len() <= target_id {
+            // 如果长度不足，追加0直到 target_id 的索引
+            self.semaphore_need.resize(target_id + 1, 0);
+        }
+        // 增加目标索引的值
+        if ifadd{
+            self.semaphore_need[target_id] += num;
+        }
+        else {
+            self.semaphore_need[target_id] -= num;
+        }
+        
+    }
+
 }
 
 impl TaskControlBlock {
@@ -65,6 +136,7 @@ impl TaskControlBlock {
         let trap_cx_ppn = res.trap_cx_ppn();
         let kstack = kstack_alloc();
         let kstack_top = kstack.get_top();
+        let process_inner=process.inner_exclusive_access();
         Self {
             process: Arc::downgrade(&process),
             kstack,
@@ -75,6 +147,12 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kstack_top),
                     task_status: TaskStatus::Ready,
                     exit_code: None,
+
+                    mutex_need:vec![0;process_inner.mutex_list.len()],
+                    mutex_allocation:vec![0;process_inner.mutex_list.len()],
+                    semaphore_need:vec![0;process_inner.mutex_list.len()],
+                    semaphore_allocation:vec![0;process_inner.mutex_list.len()],
+                    
                 })
             },
         }

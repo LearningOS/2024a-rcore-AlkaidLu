@@ -49,6 +49,13 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    ///
+    pub mutex_available:Vec<usize>,
+    /// 
+    pub semaphore_available:Vec<usize>,
+    ///
+    pub deadlock_det: bool,
+    
 }
 
 impl ProcessControlBlockInner {
@@ -81,6 +88,125 @@ impl ProcessControlBlockInner {
     /// get a task with tid in this process
     pub fn get_task(&self, tid: usize) -> Arc<TaskControlBlock> {
         self.tasks[tid].as_ref().unwrap().clone()
+    }
+    ///
+    pub fn adjust_mutex_available(&mut self, target_id: usize, num: usize, ifadd:bool) {
+        if self.mutex_available.len() <= target_id {
+            // 如果长度不足，追加0直到 target_id 的索引
+            self.mutex_available.resize(target_id + 1, 0);
+        }
+        // 增加目标索引的值
+        if ifadd{
+            self.mutex_available[target_id] += num;
+        }
+        else {
+            self.mutex_available[target_id] = self.mutex_available[target_id].saturating_sub(num);
+        }
+        
+    }
+    ///
+    pub fn adjust_sema_available(&mut self, target_id: usize, num: usize, ifadd:bool) {
+        if self.semaphore_available.len() <= target_id {
+            // 如果长度不足，追加0直到 target_id 的索引
+            self.semaphore_available.resize(target_id + 1, 0);
+        }
+        // 增加目标索引的值
+        if ifadd{
+            self.semaphore_available[target_id] += num;
+        }
+        else{
+            self.semaphore_available[target_id] = self.semaphore_available[target_id].saturating_sub(num);
+        }
+    }    
+    ///
+    pub fn detect_mut_deadlock(&self, task_id:usize, mutex_id:usize)->bool{
+        let mut work = self.mutex_available.clone();
+        let task_len = self.tasks.len();
+        let mut finish = vec![false; task_len];
+        
+        loop {
+            let mut progress = false;
+            
+            for task_id in 0..task_len {
+            
+                if !finish[task_id] {
+                    
+                    let task = self.get_task(task_id);
+                   
+                    let mut task_inner = task.inner_exclusive_access();
+                    
+                    let needs_adjustment = work.iter().enumerate().any(|(mutex_id, &mutex_remain)| {
+                        task_inner.adjust_mutex_need(mutex_id, 0,true);
+                        task_inner.mutex_need[mutex_id] > mutex_remain
+                    });
+                   
+                    if !needs_adjustment {
+                        finish[task_id] = true;
+                        work.iter_mut().enumerate().for_each(|(pos, ptr)| {
+                            task_inner.adjust_mutex_allocation(pos, 0, true);
+                            *ptr += task_inner.mutex_allocation[pos];
+                        });
+                        progress = true;
+                    }
+                }
+            }
+      
+            if !progress {
+                break;
+            }
+        }
+    
+        let task = self.get_task(task_id);
+        let mut task_inner = task.inner_exclusive_access();
+        if finish.iter().any(|x| *x == false) {
+            task_inner.adjust_mutex_need(mutex_id,1,false) ;
+            return true;
+        }
+
+        false
+    }
+    ///
+    pub fn detect_sema_deadlock(&self, task_id:usize, sem_id:usize)->bool{
+        let mut work = self.semaphore_available.clone();
+        let task_len = self.tasks.len();
+        let mut finish = vec![false; task_len];
+        loop {
+            let mut progress = false;
+        
+            for task_id in 0..task_len {
+                if !finish[task_id] {
+                    let task = self.get_task(task_id);
+                    let mut task_inner = task.inner_exclusive_access();
+            
+                    let can_proceed = work.iter().enumerate().any(|(sem_id, &sem_remain)| {
+                        task_inner.adjust_sema_need(sem_id, 0,true);
+                        task_inner.semaphore_need[sem_id] > sem_remain
+                    });
+            
+                    if !can_proceed {
+                        finish[task_id] = true;
+                        work.iter_mut().enumerate().for_each(|(pos, ptr)| {
+                            task_inner.adjust_sema_allocation(pos, 0, true);
+                            *ptr += task_inner.semaphore_allocation[pos];
+                        });
+                        progress = true;
+                    }
+                }
+            }
+            if !progress {
+                break;
+            }
+        }
+        
+        let task = self.get_task(task_id);
+        let mut task_inner = task.inner_exclusive_access();
+        if finish.iter().any(|x| *x == false) {
+            task_inner.adjust_sema_need(sem_id,1,false) ;
+            println!("deadlock!");
+            return true;
+        }
+        println!("no deadlock!");
+        false
     }
 }
 
@@ -119,6 +245,13 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_det: false,
+                    mutex_available:Vec::new(),
+                    semaphore_available:Vec::new(),
+                    //mutex_work:Vec::new(),
+                    //mutex_finish:Vec::new(),
+                    //semaphore_work:Vec::new(),
+                    //semaphore_finish:Vec::new(),
                 })
             },
         });
@@ -245,6 +378,14 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_det:parent.deadlock_det,
+                    mutex_available: Vec::new(),
+                    semaphore_available: Vec::new(),
+                    //
+                    //mutex_work:Vec::new(),
+                    //mutex_finish:Vec::new(),
+                    //semaphore_work:Vec::new(),
+                    //semaphore_finish:Vec::new(),
                 })
             },
         });
